@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# HexStrike AI backend (cloned/installed by hexstrike_init.sh -> tools/)
+tools/
+logs/
+config/hexstrike_mcp.json
