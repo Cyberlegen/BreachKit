@@ -1,3 +1,4 @@
 #!/bin/bash
-#warp_init.sh
-LIBGL_ALWAYS_SOFTWARE=1 warp-terminal
+chmod +x warp_init.sh
+./warp_init.sh
+
