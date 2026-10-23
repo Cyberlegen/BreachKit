@@ -21,6 +21,10 @@ offensive tooling backend. Bootstrap everything with:
 | `./hexstrike_init.sh --start` | ensure everything, then start the server and wait for `/health` |
 | `./hexstrike_init.sh --core-only` | skip optional extras (angr, pwntools, webdriver-manager) |
 | `./hexstrike_init.sh --force` | wipe the checkout/venv and reinstall |
+# Set BREACHKIT_SKIP_HEXSTRIKE=1 to skip the HexStrike step.
+#
+# Note: run this inside the environment where BreachKit will execute - the
+# HexStrike server is expected to be reachable at http://127.0.0.1:8888.
 
 Installed layout (all git-ignored): `tools/hexstrike-ai/` (upstream checkout + `hexstrike-env`
 virtualenv), `config/hexstrike_mcp.json` (generated MCP client config), `logs/` (server log + pid).
