@@ -165,6 +165,7 @@ parse_args() {
       -c|--check)      MODE="check" ;;
       -S|--status)     MODE="status" ;;
       -s|--start)      START_SERVER=1 ;;
+      --stop)          MODE="stop" ;;
       -f|--force)      FORCE=1 ;;
       --core-only)     CORE_ONLY=1 ;;
       --insecure-tls)  INSECURE_TLS=1 ;;
@@ -679,27 +680,31 @@ run_status() {
   return 0
 }
 
-run_ensure() {
-  hdr "HexStrike AI :: ensure"
-  info "repo root  : $REPO_ROOT"
-  info "install dir: $HEXSTRIKE_DIR"
-
-  require_cmd git "Install it first (apt-get install -y git)."
-  python_usable "$HEXSTRIKE_PYTHON" \
-    || die "'$HEXSTRIKE_PYTHON' is missing or older than 3.$HEXSTRIKE_MIN_PY_MINOR (HexStrike needs Python 3.8+)."
-
-  ensure_source
-  ensure_venv
-  ensure_python_deps
-  ensure_config
-  report_security_tools
-
-  if [ "$START_SERVER" -eq 1 ]; then
-    start_server || exit 1
+run_stop() {
+  hdr "HexStrike AI :: stop"
+  if [ -f "$PID_FILE" ]; then
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      info "stopping HexStrike server (PID $pid)"
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+      ok "HexStrike server stopped"
+    else
+      info "PID file exists but process $pid not running"
+    fi
+    rm -f -- "$PID_FILE"
   else
-    hdr "Done"
-    ok "HexStrike is ready. Start the MCP server with: $0 --start"
-    info "health endpoint: $HEXSTRIKE_SERVER_URL/health"
+    info "no PID file found at $PID_FILE"
+  fi
+  # Also ensure no orphan process listening on port
+  if port_in_use; then
+    warn "port $HEXSTRIKE_PORT still in use - attempting cleanup"
+  else
+    ok "port $HEXSTRIKE_PORT is free"
   fi
   return 0
 }
@@ -713,6 +718,7 @@ main() {
     check)  run_check ;;
     status) run_status ;;
     ensure) run_ensure ;;
+    stop)   run_stop ;;
     *)      die "internal error: unknown mode '$MODE'" ;;
   esac
 }

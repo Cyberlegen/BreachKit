@@ -1,0 +1,15 @@
+# HexStrike AI Pinned Manifest
+hexstrike:
+  pinned_commit: "4a2b9f3e1892a01d" # Pinned commit hash
+  repo_url: "https://github.com/0x4m4/hexstrike-ai.git"
+  bind_host: "127.0.0.1"
+  default_port: 8888
+  allowed_tools:
+    - httpx
+    - ffuf
+    - sqlmap
+    - nmap
+    - nuclei
+    - subfinder
+    - katana
+    - nikto
