@@ -58,17 +58,11 @@ main() {
 
     log "Upgrading pip & installing BreachKit in editable mode"
     pip install --upgrade pip setuptools wheel >/dev/null 2>&1 || true
-    pip install -e .[dev]
+    pip install -e ".[dev]"
 
     ok "BreachKit successfully installed!"
     printf '\n'
-    log "Running interactive demo..."
-    printf '\n'
-
-    python demo.py
-
-    printf '\n'
-    ok "Setup complete! Run 'breachkit --help' or execute 'python demo.py' anytime."
+    log "Setup complete! Run 'breachkit --help' or execute 'python demo.py' anytime."
 }
 
 main "$@"

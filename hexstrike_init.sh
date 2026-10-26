@@ -75,7 +75,7 @@ HEXSTRIKE_REPO_URL="${HEXSTRIKE_REPO_URL:-https://github.com/0x4m4/hexstrike-ai.
 HEXSTRIKE_BRANCH="${HEXSTRIKE_BRANCH:-master}"
 HEXSTRIKE_DIR="${HEXSTRIKE_DIR:-$REPO_ROOT/tools/hexstrike-ai}"
 HEXSTRIKE_VENV="${HEXSTRIKE_VENV:-$HEXSTRIKE_DIR/hexstrike-env}"
-HEXSTRIKE_CONFIG="${HEXSTRIKE_CONFIG:-$REPO_ROOT/config/hexstrike_mcp.json}"
+HEXSTRIKE_MANIFEST="${HEXSTRIKE_MANIFEST:-$REPO_ROOT/manifest.yaml}"
 HEXSTRIKE_LOG_DIR="${HEXSTRIKE_LOG_DIR:-$REPO_ROOT/logs}"
 HEXSTRIKE_HOST="${HEXSTRIKE_HOST:-127.0.0.1}"
 HEXSTRIKE_PORT="${HEXSTRIKE_PORT:-8888}"
@@ -106,7 +106,7 @@ CORE_MODULES=(flask requests psutil fastmcp bs4 aiohttp selenium mitmproxy)
 OPTIONAL_MODULES=(angr pwn webdriver_manager bcrypt)
 # Fallback install set (used by --core-only and when requirements.txt fails).
 # Ranges mirror upstream requirements.txt so the resolver stays consistent;
-# unpinned names let fastmcp 4.x in, which conflicts with mitmproxy.
+# pinned fastmcp>=0.2.0,<1.0.0 prevents incompatible 4.x versions from breaking mitmproxy.
 CORE_PACKAGES=(
   "flask>=2.3.0,<4.0.0"
   "requests>=2.31.0,<3.0.0"
@@ -328,26 +328,52 @@ ensure_source() {
     rm -rf -- "$HEXSTRIKE_DIR"
   fi
 
+  # Attempt to read pinned commit from manifest
+  local pinned=""
+  if [ -f "$HEXSTRIKE_MANIFEST" ]; then
+    pinned=$(grep "pinned_commit:" "$HEXSTRIKE_MANIFEST" | awk '{print $2}' | tr -d '"' | tr -d "'")
+  fi
+
+  if [ -n "$pinned" ]; then
+    HEXSTRIKE_BRANCH="$pinned"
+    info "pinned commit found in manifest: $pinned"
+  fi
+
   if check_source; then
-    ok "HexStrike source present: $HEXSTRIKE_DIR"
-    return 0
+    if [ -n "$pinned" ] && [ -d "$HEXSTRIKE_DIR/.git" ]; then
+      local current
+      current=$(git -C "$HEXSTRIKE_DIR" rev-parse HEAD 2>/dev/null || echo "")
+      if [ "$current" = "$pinned" ]; then
+        ok "HexStrike source present and pinned correctly: $HEXSTRIKE_DIR"
+        return 0
+      fi
+      info "current commit $current differs from pinned $pinned - updating"
+    else
+      ok "HexStrike source present: $HEXSTRIKE_DIR"
+      return 0
+    fi
   fi
 
   require_cmd git "Install it first (apt-get install -y git)."
   mkdir -p -- "$(dirname -- "$HEXSTRIKE_DIR")"
 
   if [ -d "$HEXSTRIKE_DIR/.git" ]; then
-    info "HexStrike checkout incomplete - refreshing from origin/$HEXSTRIKE_BRANCH"
-    git -C "$HEXSTRIKE_DIR" fetch --depth 1 origin "$HEXSTRIKE_BRANCH" \
+    info "HexStrike checkout exists - fetching $HEXSTRIKE_BRANCH"
+    git -C "$HEXSTRIKE_DIR" fetch origin "$HEXSTRIKE_BRANCH" \
       || die "git fetch failed for $HEXSTRIKE_REPO_URL"
-    git -C "$HEXSTRIKE_DIR" reset --hard "origin/$HEXSTRIKE_BRANCH" \
+    git -C "$HEXSTRIKE_DIR" reset --hard FETCH_HEAD \
       || die "git reset failed in $HEXSTRIKE_DIR"
   elif [ -d "$HEXSTRIKE_DIR" ] && [ -n "$(ls -A "$HEXSTRIKE_DIR" 2>/dev/null)" ]; then
     die "$HEXSTRIKE_DIR exists but is not a HexStrike checkout. Move it away or re-run with --force."
   else
-    info "cloning $HEXSTRIKE_REPO_URL (branch: $HEXSTRIKE_BRANCH)"
-    git clone --depth 1 --branch "$HEXSTRIKE_BRANCH" "$HEXSTRIKE_REPO_URL" "$HEXSTRIKE_DIR" \
+    info "cloning $HEXSTRIKE_REPO_URL"
+    git clone "$HEXSTRIKE_REPO_URL" "$HEXSTRIKE_DIR" \
       || die "git clone failed (check network access to $HEXSTRIKE_REPO_URL)"
+    if [ -n "$pinned" ]; then
+      info "checking out pinned commit $pinned"
+      git -C "$HEXSTRIKE_DIR" checkout "$pinned" \
+        || die "failed to checkout pinned commit $pinned"
+    fi
   fi
 
   check_source || die "checkout finished but hexstrike_server.py / requirements.txt are still missing in $HEXSTRIKE_DIR"
