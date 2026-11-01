@@ -40,6 +40,15 @@ die()  { printf '[x] %s\n' "$*" >&2; exit 1; }
 # Step 1: Warp terminal
 # ---------------------------------------------------------------------------
 init_warp() {
+  # If read-only/informational flags or stop flag are passed, skip Warp
+  for arg in "$@"; do
+    case "$arg" in
+      -c|--check|-S|--status|-h|--help|--stop)
+        return 0
+        ;;
+    esac
+  done
+
   if [ "${BREACHKIT_SKIP_WARP:-0}" = "1" ]; then
     warn "BREACHKIT_SKIP_WARP=1 - skipping Warp launch"
     return 0
@@ -71,7 +80,7 @@ init_hexstrike() {
 
 main() {
   log "BreachKit init starting in $SCRIPT_DIR"
-  init_warp
+  init_warp "$@"
   init_hexstrike "$@"
   ok "BreachKit init finished"
 }

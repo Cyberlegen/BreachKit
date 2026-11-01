@@ -1,0 +1,7 @@
+HTTP/1.1 200 OK
+Set-Cookie: session=REDACTED_VALUE; Secure
+Authorization: REDACTED_AUTH
+X-Api-Key: REDACTED_KEY
+Content-Type: text/html
+
+<html><body>Product catalog loaded successfully.</html></body>

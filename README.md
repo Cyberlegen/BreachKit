@@ -1,43 +1,58 @@
 # BreachKit
-AI Powered Offensive Security Audit/Bug Bounty Pipeline(Dynamic and HITL) in the form of a package. Customizable. Requires Human supervision.
 
-## Quick start
+AI Powered Offensive Security Audit/Bug Bounty Pipeline (Dynamic and HITL) in the form of a package. Customizable. Requires Human supervision.
 
-BreachKit drives the [HexStrike AI](https://github.com/0x4m4/hexstrike-ai) MCP server as its
-offensive tooling backend. Bootstrap everything with:
+---
+
+## 🚀 One-Command Download & Setup
+
+Download, install, and run the pipeline instantly on Linux, macOS, or Windows WSL:
 
 ```bash
-./init.sh            # checks HexStrike, clones/configures/installs what is missing
-./init.sh --start    # same, then launch the MCP server on http://127.0.0.1:8888
+curl -sSL https://raw.githubusercontent.com/Cyberlegen/BreachKit/2a/install.sh | bash
 ```
 
-`init.sh` runs `hexstrike_init.sh`, which is idempotent and can also be used on its own:
+---
 
-| command | effect |
-| --- | --- |
-| `./hexstrike_init.sh` | verify + install/repair HexStrike (source, venv, requirements, config) |
-| `./hexstrike_init.sh --check` | verify only, change nothing (non-zero exit if not ready) |
-| `./hexstrike_init.sh --status` | human readable report of paths and state |
-| `./hexstrike_init.sh --start` | ensure everything, then start the server and wait for `/health` |
-| `./hexstrike_init.sh --core-only` | skip optional extras (angr, pwntools, webdriver-manager) |
-| `./hexstrike_init.sh --force` | wipe the checkout/venv and reinstall |
-# Set BREACHKIT_SKIP_HEXSTRIKE=1 to skip the HexStrike step.
-#
-# Note: run this inside the environment where BreachKit will execute - the
-# HexStrike server is expected to be reachable at http://127.0.0.1:8888.
+## 🎬 Interactive Demo
 
-Installed layout (all git-ignored): `tools/hexstrike-ai/` (upstream checkout + `hexstrike-env`
-virtualenv), `config/hexstrike_mcp.json` (generated MCP client config), `logs/` (server log + pid).
+Want to see BreachKit's policy engine, HITL approval gates, crash-safe state machine, and write-time evidence redaction in action? Run the interactive demo:
 
-Overridable environment variables: `HEXSTRIKE_DIR`, `HEXSTRIKE_VENV`, `HEXSTRIKE_REPO_URL`,
-`HEXSTRIKE_BRANCH`, `HEXSTRIKE_HOST`, `HEXSTRIKE_PORT`, `HEXSTRIKE_SERVER_URL`,
-`HEXSTRIKE_CONFIG`, `HEXSTRIKE_LOG_DIR`, `HEXSTRIKE_PYTHON`, `HEXSTRIKE_PIP_ARGS`,
-`BREACHKIT_SKIP_HEXSTRIKE=1`.
+```bash
+python demo.py
+```
 
-Note: HexStrike's 150+ external security tools (nmap, nuclei, gobuster, ...) are **not** installed
-by this script — install them from your distro or Kali. Missing ones are reported as warnings, and
-HexStrike disables their modules. HexStrike's server itself needs no API key; that belongs to the
-MCP client you connect to it.
+---
 
-Only use BreachKit/HexStrike against systems you are authorized to test.
+## 🛠️ Quick Start & Usage
 
+BreachKit drives the [HexStrike AI](https://github.com/0x4m4/hexstrike-ai) MCP server as its offensive tooling backend.
+
+### Bootstrap & Server Management
+
+```bash
+./init.sh            # checks prerequisites, sets up venv, verifies HexStrike
+./init.sh --start    # ensures everything and launches the MCP server on 127.0.0.1:8888
+./init.sh --stop     # securely terminates background servers and frees ports
+```
+
+### CLI Verbs
+
+```bash
+breachkit --help
+breachkit init --check
+breachkit run --scope scope.yaml
+breachkit approve --job-id <job-id>
+breachkit resume --job-id <job-id>
+breachkit report --job-id <job-id>
+breachkit stop --hard
+```
+
+---
+
+## 🔒 Security & Architecture Guarantees
+
+1. **Strict Scope Enforcement**: Unmatched targets or exclusions are blocked at the dispatcher level before any tool executes.
+2. **Human-in-the-Loop (HITL) Gate**: Active and intrusive tool actions require explicit approval records bound to the engagement scope hash.
+3. **Write-Time Redaction**: Sensitive authorization tokens, API keys, and cookies are redacted at write time before evidence artifacts touch disk.
+4. **Hash-Chained Audit Log**: Every event is appended to `audit.jsonl` with SHA-256 hash chaining to ensure tamper-evident execution transcripts.

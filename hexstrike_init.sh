@@ -75,7 +75,7 @@ HEXSTRIKE_REPO_URL="${HEXSTRIKE_REPO_URL:-https://github.com/0x4m4/hexstrike-ai.
 HEXSTRIKE_BRANCH="${HEXSTRIKE_BRANCH:-master}"
 HEXSTRIKE_DIR="${HEXSTRIKE_DIR:-$REPO_ROOT/tools/hexstrike-ai}"
 HEXSTRIKE_VENV="${HEXSTRIKE_VENV:-$HEXSTRIKE_DIR/hexstrike-env}"
-HEXSTRIKE_CONFIG="${HEXSTRIKE_CONFIG:-$REPO_ROOT/config/hexstrike_mcp.json}"
+HEXSTRIKE_MANIFEST="${HEXSTRIKE_MANIFEST:-$REPO_ROOT/manifest.yaml}"
 HEXSTRIKE_LOG_DIR="${HEXSTRIKE_LOG_DIR:-$REPO_ROOT/logs}"
 HEXSTRIKE_HOST="${HEXSTRIKE_HOST:-127.0.0.1}"
 HEXSTRIKE_PORT="${HEXSTRIKE_PORT:-8888}"
@@ -106,7 +106,7 @@ CORE_MODULES=(flask requests psutil fastmcp bs4 aiohttp selenium mitmproxy)
 OPTIONAL_MODULES=(angr pwn webdriver_manager bcrypt)
 # Fallback install set (used by --core-only and when requirements.txt fails).
 # Ranges mirror upstream requirements.txt so the resolver stays consistent;
-# unpinned names let fastmcp 4.x in, which conflicts with mitmproxy.
+# pinned fastmcp>=0.2.0,<1.0.0 prevents incompatible 4.x versions from breaking mitmproxy.
 CORE_PACKAGES=(
   "flask>=2.3.0,<4.0.0"
   "requests>=2.31.0,<3.0.0"
@@ -165,6 +165,7 @@ parse_args() {
       -c|--check)      MODE="check" ;;
       -S|--status)     MODE="status" ;;
       -s|--start)      START_SERVER=1 ;;
+      --stop)          MODE="stop" ;;
       -f|--force)      FORCE=1 ;;
       --core-only)     CORE_ONLY=1 ;;
       --insecure-tls)  INSECURE_TLS=1 ;;
@@ -327,26 +328,52 @@ ensure_source() {
     rm -rf -- "$HEXSTRIKE_DIR"
   fi
 
+  # Attempt to read pinned commit from manifest
+  local pinned=""
+  if [ -f "$HEXSTRIKE_MANIFEST" ]; then
+    pinned=$(grep "pinned_commit:" "$HEXSTRIKE_MANIFEST" | awk '{print $2}' | tr -d '"' | tr -d "'")
+  fi
+
+  if [ -n "$pinned" ]; then
+    HEXSTRIKE_BRANCH="$pinned"
+    info "pinned commit found in manifest: $pinned"
+  fi
+
   if check_source; then
-    ok "HexStrike source present: $HEXSTRIKE_DIR"
-    return 0
+    if [ -n "$pinned" ] && [ -d "$HEXSTRIKE_DIR/.git" ]; then
+      local current
+      current=$(git -C "$HEXSTRIKE_DIR" rev-parse HEAD 2>/dev/null || echo "")
+      if [ "$current" = "$pinned" ]; then
+        ok "HexStrike source present and pinned correctly: $HEXSTRIKE_DIR"
+        return 0
+      fi
+      info "current commit $current differs from pinned $pinned - updating"
+    else
+      ok "HexStrike source present: $HEXSTRIKE_DIR"
+      return 0
+    fi
   fi
 
   require_cmd git "Install it first (apt-get install -y git)."
   mkdir -p -- "$(dirname -- "$HEXSTRIKE_DIR")"
 
   if [ -d "$HEXSTRIKE_DIR/.git" ]; then
-    info "HexStrike checkout incomplete - refreshing from origin/$HEXSTRIKE_BRANCH"
-    git -C "$HEXSTRIKE_DIR" fetch --depth 1 origin "$HEXSTRIKE_BRANCH" \
+    info "HexStrike checkout exists - fetching $HEXSTRIKE_BRANCH"
+    git -C "$HEXSTRIKE_DIR" fetch origin "$HEXSTRIKE_BRANCH" \
       || die "git fetch failed for $HEXSTRIKE_REPO_URL"
-    git -C "$HEXSTRIKE_DIR" reset --hard "origin/$HEXSTRIKE_BRANCH" \
+    git -C "$HEXSTRIKE_DIR" reset --hard FETCH_HEAD \
       || die "git reset failed in $HEXSTRIKE_DIR"
   elif [ -d "$HEXSTRIKE_DIR" ] && [ -n "$(ls -A "$HEXSTRIKE_DIR" 2>/dev/null)" ]; then
     die "$HEXSTRIKE_DIR exists but is not a HexStrike checkout. Move it away or re-run with --force."
   else
-    info "cloning $HEXSTRIKE_REPO_URL (branch: $HEXSTRIKE_BRANCH)"
-    git clone --depth 1 --branch "$HEXSTRIKE_BRANCH" "$HEXSTRIKE_REPO_URL" "$HEXSTRIKE_DIR" \
+    info "cloning $HEXSTRIKE_REPO_URL"
+    git clone "$HEXSTRIKE_REPO_URL" "$HEXSTRIKE_DIR" \
       || die "git clone failed (check network access to $HEXSTRIKE_REPO_URL)"
+    if [ -n "$pinned" ]; then
+      info "checking out pinned commit $pinned"
+      git -C "$HEXSTRIKE_DIR" checkout "$pinned" \
+        || die "failed to checkout pinned commit $pinned"
+    fi
   fi
 
   check_source || die "checkout finished but hexstrike_server.py / requirements.txt are still missing in $HEXSTRIKE_DIR"
@@ -679,27 +706,31 @@ run_status() {
   return 0
 }
 
-run_ensure() {
-  hdr "HexStrike AI :: ensure"
-  info "repo root  : $REPO_ROOT"
-  info "install dir: $HEXSTRIKE_DIR"
-
-  require_cmd git "Install it first (apt-get install -y git)."
-  python_usable "$HEXSTRIKE_PYTHON" \
-    || die "'$HEXSTRIKE_PYTHON' is missing or older than 3.$HEXSTRIKE_MIN_PY_MINOR (HexStrike needs Python 3.8+)."
-
-  ensure_source
-  ensure_venv
-  ensure_python_deps
-  ensure_config
-  report_security_tools
-
-  if [ "$START_SERVER" -eq 1 ]; then
-    start_server || exit 1
+run_stop() {
+  hdr "HexStrike AI :: stop"
+  if [ -f "$PID_FILE" ]; then
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      info "stopping HexStrike server (PID $pid)"
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+      ok "HexStrike server stopped"
+    else
+      info "PID file exists but process $pid not running"
+    fi
+    rm -f -- "$PID_FILE"
   else
-    hdr "Done"
-    ok "HexStrike is ready. Start the MCP server with: $0 --start"
-    info "health endpoint: $HEXSTRIKE_SERVER_URL/health"
+    info "no PID file found at $PID_FILE"
+  fi
+  # Also ensure no orphan process listening on port
+  if port_in_use; then
+    warn "port $HEXSTRIKE_PORT still in use - attempting cleanup"
+  else
+    ok "port $HEXSTRIKE_PORT is free"
   fi
   return 0
 }
@@ -713,6 +744,7 @@ main() {
     check)  run_check ;;
     status) run_status ;;
     ensure) run_ensure ;;
+    stop)   run_stop ;;
     *)      die "internal error: unknown mode '$MODE'" ;;
   esac
 }
