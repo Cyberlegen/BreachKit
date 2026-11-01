@@ -89,6 +89,6 @@ def test_write_time_redaction():
     assert "secret_token_123" not in redacted
     assert "REDACTED_AUTH" in redacted
     assert "my_api_key_abc" not in redacted
-    assert "REDACTED_KEY" in redacted
+    assert "REDACTED_SECRET" in redacted
     assert "secret_cookie_val" not in redacted
     assert "REDACTED_VALUE" in redacted
